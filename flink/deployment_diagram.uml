@@ -1,0 +1,71 @@
+@startuml
+
+!pragma horizontalLineBetweenDifferentPackageAllowed
+
+note top of beam_client: The client might be code in any Beam SDK (not just Java)
+rectangle "Beam Client" as beam_client {
+    artifact "Beam Client SDK    " {
+        rectangle "Client Code" as beam_client_code
+    }
+}
+
+rectangle "Flink Client JVM" as flink_client {
+    artifact "Flink Runner Jar" as runner_jar {
+        rectangle "gRPC Server" as job_server {
+            rectangle "Job API (JobService)" as job_service
+            rectangle "Artifact API (ArtifactStagingService)" as artifact_staging
+        }
+    }
+    note top of runner_jar: A new Flink ExecutionEnvironment is spawned for each job.
+    note bottom of runner_jar: The runner jar is submitted to Flink out-of-band.\nThis starts the Job API.
+}
+
+rectangle "Flink JobManager JVM" {
+    artifact "Flink Deployment" {
+        rectangle "Flink JobManager Service" as flink_job_manager
+    }
+}
+
+node "Flink Worker Node" {
+    rectangle "Flink TaskManager JVM" as flink_task {
+        artifact "Flink Runner Jar" {
+            rectangle "Harness Manager" as harness_manager {
+                rectangle "gRPC Server" {
+                    rectangle "Artifact API (ArtifactRetrievalService)" as artifact_retrieval
+                    rectangle "Provision API (ProvisionService)" as provision_service
+                    rectangle "Control Plane (BeamFnControl)" as control_plane
+                    rectangle "Data Plane (BeamFnData)" as data_plane
+                    rectangle "State API (BeamFnState)" as state_api
+                    rectangle "Logging API (BeamFnLogging)" as logging_api
+                }
+            }
+            rectangle "Fused Stage Operator" as operator
+        }
+    }
+    rectangle "Docker" as docker {
+        artifact "SDK Harness (Environment)" {
+            rectangle "Boot Code and Fn Execution" as fn_execution
+        }
+    }
+}
+
+beam_client_code --> job_service: Run
+beam_client_code --> artifact_staging: Put Artifact
+
+harness_manager --> docker: Create Environment
+
+job_service --> flink_job_manager: Execute Pipeline
+artifact_staging --> flink_job_manager: Register Cached File
+
+flink_job_manager --> operator: Create Operator
+
+operator -> harness_manager
+
+fn_execution --> artifact_retrieval
+fn_execution --> provision_service
+fn_execution <-> control_plane
+fn_execution <-> data_plane
+fn_execution --> state_api
+fn_execution --> logging_api
+
+@enduml
